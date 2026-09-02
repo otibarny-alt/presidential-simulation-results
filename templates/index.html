@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>2027 Presidential Simulation Results Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body{font-family:Arial,sans-serif;background:#f4f6f8;margin:0;color:#222}
+.wrap{max-width:1400px;margin:auto;padding:20px}.header{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:10px}
+h1{margin:0;font-size:26px}.muted{color:#666;font-size:13px}.simulation{background:#fff0c5;padding:11px 16px;font-weight:800;border-radius:8px;margin-bottom:16px}
+.controls{background:#fff;padding:14px;border-radius:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;box-shadow:0 2px 10px #0001}
+select,button,input{padding:10px 12px;border:1px solid #bbb;border-radius:8px;background:#fff}button{cursor:pointer}.primary{background:#222;color:#fff;border-color:#222}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:16px 0}.card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 2px 10px #0001}
+.big{font-size:28px;font-weight:700}.label{font-size:13px;color:#666;margin-top:4px}.grid2{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}
+table{width:100%;border-collapse:collapse}th,td{padding:9px;border-bottom:1px solid #e5e5e5;text-align:left;font-size:14px}th{background:#fafafa}
+.chartbox{height:360px}.section-title{display:flex;justify-content:space-between;align-items:center}.status-OPEN{font-weight:700;color:#b36b00}.status-CLOSED{font-weight:700;color:#147a35}.status-NOT\ STARTED{font-weight:700;color:#777}
+.scroll{max-height:500px;overflow:auto}.tabs{display:flex;gap:8px;margin:18px 0 8px}.tabs button.active{background:#222;color:#fff}.hidden{display:none}
+.skip{color:#a11;font-weight:700}
+@media(max-width:900px){.cards{grid-template-columns:repeat(2,1fr)}.grid2{grid-template-columns:1fr}}
+@media(max-width:560px){.cards{grid-template-columns:1fr}.header{align-items:flex-start;flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="wrap">
+ <div class="header">
+  <div><h1>2027 Presidential Simulation Results Dashboard</h1><div class="muted">Live aggregated presidential data from the voting simulation</div></div>
+  <div><button onclick="refreshData()">Refresh Now</button> <a href="/logout">Logout</a></div>
+ </div>
+ <div class="simulation">TRAINING / SIMULATION ONLY — NOT OFFICIAL ELECTION RESULTS</div>
+
+ <div class="controls">
+  <strong>View:</strong>
+  <select id="county"><option value="">National</option></select>
+  <select id="constituency" disabled><option value="">All Constituencies</option></select>
+  <select id="ward" disabled><option value="">All Wards</option></select>
+  <button class="primary" onclick="loadDashboard()">Apply</button>
+  <span id="lastUpdated" class="muted"></span>
+ </div>
+
+ <div class="cards">
+  <div class="card"><div class="big" id="candidateSelections">0</div><div class="label">Presidential Candidate Selections</div></div>
+  <div class="card"><div class="big skip" id="skipped">0</div><div class="label">Presidential Category Skipped</div></div>
+  <div class="card"><div class="big" id="participants">0</div><div class="label">Presidential Category Participants</div></div>
+  <div class="card"><div class="big" id="registered">0</div><div class="label">Registered Voters</div></div>
+ </div>
+
+ <div class="cards">
+  <div class="card"><div class="big" id="turnout">0%</div><div class="label">Participation / Registered Voters</div></div>
+  <div class="card"><div class="big skip" id="skipRate">0%</div><div class="label">Skipped / Registered Voters</div></div>
+  <div class="card"><div class="big" id="openedStreams">0</div><div class="label">Streams Opened</div></div>
+  <div class="card"><div class="big" id="closedStreams">0</div><div class="label">Streams Closed</div></div>
+ </div>
+
+ <div class="grid2">
+  <div class="card">
+   <div class="section-title"><h2>Presidential Candidate Tallies</h2></div>
+   <div class="scroll"><table><thead><tr><th>Rank</th><th>Candidate</th><th>Votes</th><th>Share of Candidate Selections</th></tr></thead><tbody id="candidateTable"></tbody></table></div>
+  </div>
+  <div class="card">
+   <h2>Stream Opening Progress</h2>
+   <div class="chartbox"><canvas id="progressChart"></canvas></div>
+  </div>
+ </div>
+
+ <div class="card" style="margin-top:14px">
+  <h2>Candidate Votes</h2><div class="chartbox"><canvas id="candidateChart"></canvas></div>
+ </div>
+
+ <div class="tabs">
+  <button id="tabStreams" class="active" onclick="showTab('streams')">Stream Details</button>
+  <button id="tabRecent" onclick="showTab('recent')">Recent Stream Activity</button>
+ </div>
+
+ <div id="streamsPanel" class="card">
+  <div class="section-title"><h2>Voting Simulation Stream Details</h2><span id="streamCount" class="muted"></span></div>
+  <div class="controls" style="box-shadow:none;padding:8px 0;margin-bottom:8px">
+   <select id="statusFilter" onchange="streamPage=1;loadStreams()">
+    <option value="">All Statuses</option><option value="NOT STARTED">Not Started</option><option value="OPEN">Open</option><option value="CLOSED">Closed</option>
+   </select>
+   <input id="streamSearch" placeholder="Search county, constituency, ward, station or stream" style="min-width:300px">
+   <button onclick="streamPage=1;loadStreams()">Search</button>
+   <select id="pageSize" onchange="streamPage=1;loadStreams()"><option value="100">100 rows</option><option value="200" selected>200 rows</option><option value="500">500 rows</option></select>
+  </div>
+  <div class="scroll">
+   <table><thead><tr><th>County</th><th>Constituency</th><th>Ward</th><th>Polling Station Stream</th><th>Registered</th><th>Participants</th><th>Candidate Selections</th><th>Skipped President</th><th>Status</th></tr></thead><tbody id="streamTable"></tbody></table>
+  </div>
+  <div style="display:flex;justify-content:center;gap:10px;align-items:center;margin-top:12px">
+   <button id="prevPage" onclick="changeStreamPage(-1)">Previous</button><span id="pageInfo" class="muted"></span><button id="nextPage" onclick="changeStreamPage(1)">Next</button>
+  </div>
+ </div>
+
+ <div id="recentPanel" class="card hidden">
+  <h2>Recent Stream Opening / Closing Activity</h2>
+  <div class="scroll"><table><thead><tr><th>County</th><th>Constituency</th><th>Ward</th><th>Polling Station</th><th>Stream</th><th>Status</th><th>Opened</th><th>Closed</th><th>Participants</th></tr></thead><tbody id="recentTable"></tbody></table></div>
+ </div>
+</div>
+
+<script>
+let candidateChart,progressChart; const fmt=n=>Number(n||0).toLocaleString();
+async function init(){
+ const counties=await fetch('/api/counties').then(r=>r.json());
+ const c=document.getElementById('county'); counties.forEach(x=>c.add(new Option(x.label,x.value)));
+ c.addEventListener('change',loadConstituencies); document.getElementById('constituency').addEventListener('change',loadWards); await loadDashboard();
+}
+async function loadConstituencies(){
+ const county=document.getElementById('county').value,el=document.getElementById('constituency'),ward=document.getElementById('ward');
+ el.innerHTML='<option value="">All Constituencies</option>';ward.innerHTML='<option value="">All Wards</option>';el.disabled=!county;ward.disabled=true;
+ if(county){(await fetch('/api/constituencies?county='+encodeURIComponent(county)).then(r=>r.json())).forEach(x=>el.add(new Option(x.label,x.value)));}
+}
+async function loadWards(){
+ const c=document.getElementById('county').value,k=document.getElementById('constituency').value,w=document.getElementById('ward');
+ w.innerHTML='<option value="">All Wards</option>';w.disabled=!k;
+ if(c&&k){(await fetch('/api/wards?county='+encodeURIComponent(c)+'&constituency='+encodeURIComponent(k)).then(r=>r.json())).forEach(x=>w.add(new Option(x.label,x.value)));}
+}
+function qs(){return '?county='+encodeURIComponent(county.value)+'&constituency='+encodeURIComponent(constituency.value)+'&ward='+encodeURIComponent(ward.value)}
+async function loadDashboard(){
+ streamPage=1; const d=await fetch('/api/summary'+qs(),{cache:'no-store'}).then(r=>r.json()); if(d.error){alert(d.error);return}
+ candidateSelections.textContent=fmt(d.totals.candidate_selections); skipped.textContent=fmt(d.totals.skipped); participants.textContent=fmt(d.totals.participants); registered.textContent=fmt(d.totals.registered_voters);
+ turnout.textContent=d.totals.turnout_percent+'%'; skipRate.textContent=d.totals.skip_percent_registered+'%'; openedStreams.textContent=fmt(d.reporting.opened_streams);closedStreams.textContent=fmt(d.reporting.closed_streams);
+ lastUpdated.textContent=d.last_updated?'Latest stream activity: '+d.last_updated:'No stream activity yet';
+ candidateTable.innerHTML=d.candidates.map((x,i)=>`<tr><td>${i+1}</td><td>${x.candidate}</td><td>${fmt(x.votes)}</td><td>${x.share}%</td></tr>`).join('');
+ if(candidateChart)candidateChart.destroy();candidateChart=new Chart(document.getElementById('candidateChart'),{type:'bar',data:{labels:d.candidate_series.map(x=>x.candidate),datasets:[{label:'Votes',data:d.candidate_series.map(x=>x.votes)}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}});
+ if(progressChart)progressChart.destroy();progressChart=new Chart(document.getElementById('progressChart'),{type:'doughnut',data:{labels:['Opened','Not Started'],datasets:[{data:[d.reporting.opened_streams,d.reporting.not_started_streams]}]},options:{responsive:true,maintainAspectRatio:false}});
+ loadStreams();loadRecent();
+}
+let streamPage=1,streamTotalPages=1;
+async function loadStreams(){
+ const body=streamTable;body.innerHTML='<tr><td colspan="9">Loading stream details…</td></tr>';
+ const url='/api/stream-details'+qs()+'&page='+streamPage+'&page_size='+encodeURIComponent(pageSize.value)+'&status='+encodeURIComponent(statusFilter.value)+'&search='+encodeURIComponent(streamSearch.value);
+ try{
+  const r=await fetch(url,{cache:'no-store'}),d=await r.json();if(!r.ok||!Array.isArray(d.rows)){body.innerHTML='<tr><td colspan="9">'+(d.error||'Unable to load stream details.')+'</td></tr>';return}
+  streamPage=d.page;streamTotalPages=d.total_pages;streamCount.textContent=fmt(d.total_rows)+' matching streams';pageInfo.textContent='Page '+d.page+' of '+d.total_pages;prevPage.disabled=d.page<=1;nextPage.disabled=d.page>=d.total_pages;
+  body.innerHTML=d.rows.map(x=>`<tr><td>${x.county_label||'—'}</td><td>${x.constituency_label||'—'}</td><td>${x.ward_label||'—'}</td><td>${x.stream_label||'—'}</td><td>${fmt(x.registered_voters)}</td><td>${fmt(x.participants)}</td><td>${fmt(x.candidate_selections)}</td><td class="skip">${fmt(x.skipped)}</td><td class="status-${x.status}">${x.status}</td></tr>`).join('')||'<tr><td colspan="9">No streams found.</td></tr>';
+ }catch(e){body.innerHTML='<tr><td colspan="9">Unable to load stream details.</td></tr>'}
+}
+function changeStreamPage(d){const t=streamPage+d;if(t<1||t>streamTotalPages)return;streamPage=t;loadStreams()}
+async function loadRecent(){
+ const rows=await fetch('/api/recent-streams'+qs()+'&limit=50',{cache:'no-store'}).then(r=>r.json());
+ recentTable.innerHTML=rows.map(x=>`<tr><td>${x.county||'—'}</td><td>${x.constituency||'—'}</td><td>${x.ward||'—'}</td><td>${x.poll_station||'—'}</td><td>${x.stream||'—'}</td><td class="status-${x.status}">${x.status||'—'}</td><td>${x.opened_at||'—'}</td><td>${x.closed_at||'—'}</td><td>${fmt(x.participants)}</td></tr>`).join('');
+}
+async function refreshData(){const r=await fetch('/api/refresh',{method:'POST'}).then(r=>r.json());if(!r.success){alert(r.error||'Refresh failed');return}await loadDashboard()}
+function showTab(w){streamsPanel.classList.toggle('hidden',w!=='streams');recentPanel.classList.toggle('hidden',w!=='recent');tabStreams.classList.toggle('active',w==='streams');tabRecent.classList.toggle('active',w==='recent')}
+init();
+</script>
+</body></html>
