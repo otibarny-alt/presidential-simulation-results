@@ -54,3 +54,13 @@ SIMULATION_BASE_URL must point to the voting simulation service, not the Candida
 
 This dashboard remains a monitoring and visualization component for the non-binding
 TRAINING / SIMULATION system only.
+
+
+LIVE CURRENT-VOTE MODE (V2)
+---------------------------
+This dashboard is designed to pair with Training E-Ballot Prototype V22.74 or later.
+That simulation version publishes anonymous presidential simulation ballot events to the shared PostgreSQL database and exposes them through /api/dashboard/president.
+No National ID, phone number, or membership number is sent to this dashboard.
+The dashboard refreshes headline totals/candidate tallies every 5 seconds; Refresh Now forces an immediate source refresh.
+Set CACHE_SECONDS=3 (recommended) on the dashboard service.
+Deploy the voting simulation update first, then this dashboard update.

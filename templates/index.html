@@ -114,15 +114,15 @@ async function loadWards(){
  if(c&&k){(await fetch('/api/wards?county='+encodeURIComponent(c)+'&constituency='+encodeURIComponent(k)).then(r=>r.json())).forEach(x=>w.add(new Option(x.label,x.value)));}
 }
 function qs(){return '?county='+encodeURIComponent(county.value)+'&constituency='+encodeURIComponent(constituency.value)+'&ward='+encodeURIComponent(ward.value)}
-async function loadDashboard(){
- streamPage=1; const d=await fetch('/api/summary'+qs(),{cache:'no-store'}).then(r=>r.json()); if(d.error){alert(d.error);return}
+async function loadDashboard(refreshDetails=true){
+ if(refreshDetails)streamPage=1; const d=await fetch('/api/summary'+qs(),{cache:'no-store'}).then(r=>r.json()); if(d.error){alert(d.error);return}
  candidateSelections.textContent=fmt(d.totals.candidate_selections); skipped.textContent=fmt(d.totals.skipped); participants.textContent=fmt(d.totals.participants); registered.textContent=fmt(d.totals.registered_voters);
  turnout.textContent=d.totals.turnout_percent+'%'; skipRate.textContent=d.totals.skip_percent_registered+'%'; openedStreams.textContent=fmt(d.reporting.opened_streams);closedStreams.textContent=fmt(d.reporting.closed_streams);
  lastUpdated.textContent=d.last_updated?'Latest stream activity: '+d.last_updated:'No stream activity yet';
  candidateTable.innerHTML=d.candidates.map((x,i)=>`<tr><td>${i+1}</td><td>${x.candidate}</td><td>${fmt(x.votes)}</td><td>${x.share}%</td></tr>`).join('');
  if(candidateChart)candidateChart.destroy();candidateChart=new Chart(document.getElementById('candidateChart'),{type:'bar',data:{labels:d.candidate_series.map(x=>x.candidate),datasets:[{label:'Votes',data:d.candidate_series.map(x=>x.votes)}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}});
  if(progressChart)progressChart.destroy();progressChart=new Chart(document.getElementById('progressChart'),{type:'doughnut',data:{labels:['Opened','Not Started'],datasets:[{data:[d.reporting.opened_streams,d.reporting.not_started_streams]}]},options:{responsive:true,maintainAspectRatio:false}});
- loadStreams();loadRecent();
+ if(refreshDetails){loadStreams();loadRecent();}
 }
 let streamPage=1,streamTotalPages=1;
 async function loadStreams(){
@@ -139,8 +139,10 @@ async function loadRecent(){
  const rows=await fetch('/api/recent-streams'+qs()+'&limit=50',{cache:'no-store'}).then(r=>r.json());
  recentTable.innerHTML=rows.map(x=>`<tr><td>${x.county||'—'}</td><td>${x.constituency||'—'}</td><td>${x.ward||'—'}</td><td>${x.poll_station||'—'}</td><td>${x.stream||'—'}</td><td class="status-${x.status}">${x.status||'—'}</td><td>${x.opened_at||'—'}</td><td>${x.closed_at||'—'}</td><td>${fmt(x.participants)}</td></tr>`).join('');
 }
-async function refreshData(){const r=await fetch('/api/refresh',{method:'POST'}).then(r=>r.json());if(!r.success){alert(r.error||'Refresh failed');return}await loadDashboard()}
+async function refreshData(){const r=await fetch('/api/refresh',{method:'POST'}).then(r=>r.json());if(!r.success){alert(r.error||'Refresh failed');return}await loadDashboard(true)}
 function showTab(w){streamsPanel.classList.toggle('hidden',w!=='streams');recentPanel.classList.toggle('hidden',w!=='recent');tabStreams.classList.toggle('active',w==='streams');tabRecent.classList.toggle('active',w==='recent')}
 init();
+// Keep presidential totals/candidate tallies close to live without reloading the large stream table every cycle.
+setInterval(()=>loadDashboard(false),5000);
 </script>
 </body></html>

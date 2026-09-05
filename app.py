@@ -17,7 +17,7 @@ SIMULATION_BASE_URL=os.getenv("SIMULATION_BASE_URL","").rstrip("/")
 SIMULATION_DASHBOARD_API_KEY=os.getenv("SIMULATION_DASHBOARD_API_KEY","").strip()
 COUNTY_MAIN_FILENAME=os.getenv("COUNTY_MAIN_FILENAME","county_main.csv").strip()
 AGENTS_LOGIN_FILENAME=os.getenv("AGENTS_LOGIN_FILENAME","agents_login.csv").strip()
-CACHE_SECONDS=int(os.getenv("CACHE_SECONDS","15"))
+CACHE_SECONDS=int(os.getenv("CACHE_SECONDS","3"))
 
 AUTH_USERNAME=os.getenv("AUTH_USERNAME","").strip()
 AUTH_PASSWORD_HASH=os.getenv("AUTH_PASSWORD_HASH","").strip()
