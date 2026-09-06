@@ -50,6 +50,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:9px;border-bottom:1px so
   <div class="card"><div class="big skip" id="skipRate">0%</div><div class="label">Skipped / Registered Voters</div></div>
   <div class="card"><div class="big" id="openedStreams">0</div><div class="label">Streams Opened</div></div>
   <div class="card"><div class="big" id="closedStreams">0</div><div class="label">Streams Closed</div></div>
+  <div class="card"><div class="big" id="votesNotCast">0</div><div class="label">Total Votes Not Cast</div></div>
  </div>
 
  <div class="grid2">
@@ -65,6 +66,17 @@ table{width:100%;border-collapse:collapse}th,td{padding:9px;border-bottom:1px so
 
  <div class="card" style="margin-top:14px">
   <h2>Candidate Votes</h2><div class="chartbox"><canvas id="candidateChart"></canvas></div>
+ </div>
+
+ <div class="grid2" style="margin-top:14px">
+  <div class="card">
+   <h2>Counties With 25% or More of Votes Cast</h2>
+   <div class="scroll"><table><thead><tr><th>Candidate</th><th>Counties ≥25%</th></tr></thead><tbody id="county25Table"></tbody></table></div>
+  </div>
+  <div class="card">
+   <h2>Candidate Percentage in Every County</h2>
+   <div class="scroll"><table><thead><tr><th>County</th><th>Total Votes Cast</th><th>Candidate</th><th>Votes</th><th>% of County Votes</th></tr></thead><tbody id="countyCandidateTable"></tbody></table></div>
+  </div>
  </div>
 
  <div class="tabs">
@@ -117,9 +129,11 @@ function qs(){return '?county='+encodeURIComponent(county.value)+'&constituency=
 async function loadDashboard(refreshDetails=true){
  if(refreshDetails)streamPage=1; const d=await fetch('/api/summary'+qs(),{cache:'no-store'}).then(r=>r.json()); if(d.error){alert(d.error);return}
  candidateSelections.textContent=fmt(d.totals.candidate_selections); skipped.textContent=fmt(d.totals.skipped); participants.textContent=fmt(d.totals.participants); registered.textContent=fmt(d.totals.registered_voters);
- turnout.textContent=d.totals.turnout_percent+'%'; skipRate.textContent=d.totals.skip_percent_registered+'%'; openedStreams.textContent=fmt(d.reporting.opened_streams);closedStreams.textContent=fmt(d.reporting.closed_streams);
+ turnout.textContent=d.totals.turnout_percent+'%'; skipRate.textContent=d.totals.skip_percent_registered+'%'; openedStreams.textContent=fmt(d.reporting.opened_streams);closedStreams.textContent=fmt(d.reporting.closed_streams);votesNotCast.textContent=fmt(d.totals.total_votes_not_cast);
  lastUpdated.textContent=d.last_updated?'Latest stream activity: '+d.last_updated:'No stream activity yet';
  candidateTable.innerHTML=d.candidates.map((x,i)=>`<tr><td>${i+1}</td><td>${x.candidate}</td><td>${fmt(x.votes)}</td><td>${x.share}%</td></tr>`).join('');
+ county25Table.innerHTML=(d.candidate_counties_25_plus||[]).map(x=>`<tr><td>${x.candidate}</td><td>${fmt(x.counties_25_plus)}</td></tr>`).join('')||'<tr><td colspan="2">No county vote data yet.</td></tr>';
+ countyCandidateTable.innerHTML=(d.county_candidate_percentages||[]).flatMap(c=>c.candidates.map(x=>`<tr><td>${c.county}</td><td>${fmt(c.total_votes_cast)}</td><td>${x.candidate}</td><td>${fmt(x.votes)}</td><td>${x.percent}%</td></tr>`)).join('')||'<tr><td colspan="5">No county vote data yet.</td></tr>';
  if(candidateChart)candidateChart.destroy();candidateChart=new Chart(document.getElementById('candidateChart'),{type:'bar',data:{labels:d.candidate_series.map(x=>x.candidate),datasets:[{label:'Votes',data:d.candidate_series.map(x=>x.votes)}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}}}});
  if(progressChart)progressChart.destroy();progressChart=new Chart(document.getElementById('progressChart'),{type:'doughnut',data:{labels:['Opened','Not Started'],datasets:[{data:[d.reporting.opened_streams,d.reporting.not_started_streams]}]},options:{responsive:true,maintainAspectRatio:false}});
  if(refreshDetails){loadStreams();loadRecent();}

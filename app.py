@@ -218,6 +218,34 @@ def summary_payload(county="",constituency="",ward=""):
   t=row.get("closed_at") or row.get("opened_at") or ""
   if t>last_updated:last_updated=t
 
+ # Candidate performance by county. Percentages use deliberate candidate votes cast
+ # in that county as the denominator; skipped presidential categories are excluded.
+ hp=load_hierarchy()
+ geo_by_stream={norm(x["stream"]):x for x in hp["expected"]}
+ county_stats={}
+ for row in streams:
+  geo=geo_by_stream.get(norm(row.get("stream","")),{})
+  ckey=geo.get("county","")
+  if not ckey: continue
+  c=county_stats.setdefault(ckey,{"county":geo.get("county_label") or friendly(ckey),"total_votes_cast":0,"candidate_votes":{}})
+  cv=row.get("candidate_votes") or {}
+  for cid,n in cv.items():
+   n=to_int(n); c["candidate_votes"][cid]=c["candidate_votes"].get(cid,0)+n; c["total_votes_cast"]+=n
+ county_results=[]
+ counties_25={cid:0 for cid in candidate_names}
+ for c in sorted(county_stats.values(),key=lambda x:x["county"]):
+  total=c["total_votes_cast"]
+  vals=[]
+  for cid in candidate_names:
+   votes=c["candidate_votes"].get(cid,0)
+   pct=round(votes/total*100,2) if total else 0
+   if total and pct>=25: counties_25[cid]=counties_25.get(cid,0)+1
+   vals.append({"candidate_id":cid,"candidate":candidate_names.get(cid,cid),"votes":votes,"percent":pct})
+  vals.sort(key=lambda x:(-x["votes"],x["candidate"].lower()))
+  county_results.append({"county":c["county"],"total_votes_cast":total,"candidates":vals})
+ candidate_county_25=[{"candidate_id":cid,"candidate":candidate_names.get(cid,cid),"counties_25_plus":counties_25.get(cid,0)} for cid in candidate_names]
+ candidate_county_25.sort(key=lambda x:(-x["counties_25_plus"],x["candidate"].lower()))
+
  return {
   "filters":{"county":county,"constituency":constituency,"ward":ward},
   "candidates":ranked,
@@ -228,6 +256,7 @@ def summary_payload(county="",constituency="",ward=""):
    "participants":participants,
    "registered_voters":registered,
    "not_participated":no_participation,
+   "total_votes_not_cast":no_participation,
    "turnout_percent":turnout_pct,
    "skip_percent_registered":skip_pct
   },
@@ -242,6 +271,8 @@ def summary_payload(county="",constituency="",ward=""):
    "polling_centres_partial":partial,
    "polling_centres_not_started":not_started
   },
+  "county_candidate_percentages":county_results,
+  "candidate_counties_25_plus":candidate_county_25,
   "last_updated":last_updated
  }
 
