@@ -1,11 +1,20 @@
 
-import os, csv, re, time
+import os, csv, re, time, smtplib, ssl
+from html import escape
+from io import BytesIO
+from email.message import EmailMessage
 from functools import wraps
 
 import requests
 from flask import Flask, jsonify, render_template, request, redirect, url_for, session, flash
 from werkzeug.security import check_password_hash
 from dotenv import load_dotenv
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.units import mm
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
 
 BASE_DIR=os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(BASE_DIR,".env"))
@@ -21,6 +30,14 @@ CACHE_SECONDS=int(os.getenv("CACHE_SECONDS","3"))
 
 AUTH_USERNAME=os.getenv("AUTH_USERNAME","").strip()
 AUTH_PASSWORD_HASH=os.getenv("AUTH_PASSWORD_HASH","").strip()
+SMTP_HOST=os.getenv("SMTP_HOST","").strip()
+SMTP_PORT=int(os.getenv("SMTP_PORT","587") or 587)
+SMTP_USERNAME=os.getenv("SMTP_USERNAME","").strip()
+SMTP_PASSWORD=os.getenv("SMTP_PASSWORD","")
+SMTP_FROM_EMAIL=os.getenv("SMTP_FROM_EMAIL",SMTP_USERNAME).strip()
+SMTP_FROM_NAME=os.getenv("SMTP_FROM_NAME","2027 Presidential Simulation Results").strip()
+SMTP_USE_TLS=os.getenv("SMTP_USE_TLS","true").strip().lower() in {"1","true","yes","on"}
+SMTP_USE_SSL=os.getenv("SMTP_USE_SSL","false").strip().lower() in {"1","true","yes","on"}
 
 _cache={"snapshot_at":0.0,"snapshot":None,"hierarchy":None,"registered":None}
 
@@ -291,6 +308,120 @@ def api_summary():
    request.args.get("ward","")
   ))
  except Exception as exc:
+  return jsonify({"error":str(exc)}),500
+
+def valid_email(value):
+ return bool(re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+",str(value or "").strip()))
+
+def results_table_style():
+ return TableStyle([
+  ("BACKGROUND",(0,0),(-1,0),colors.HexColor("#F3F4F6")),
+  ("FONTNAME",(0,0),(-1,0),"Helvetica-Bold"),
+  ("FONTNAME",(0,1),(-1,-1),"Helvetica"),
+  ("FONTSIZE",(0,0),(-1,-1),9),
+  ("VALIGN",(0,0),(-1,-1),"MIDDLE"),
+  ("GRID",(0,0),(-1,-1),0.35,colors.HexColor("#CCCCCC")),
+  ("BOTTOMPADDING",(0,0),(-1,-1),6),
+  ("TOPPADDING",(0,0),(-1,-1),6),
+ ])
+
+def build_results_pdf(summary):
+ buf=BytesIO()
+ doc=SimpleDocTemplate(buf,pagesize=A4,rightMargin=16*mm,leftMargin=16*mm,topMargin=14*mm,bottomMargin=14*mm,title="Presidential Candidate Results - Training Simulation Only")
+ styles=getSampleStyleSheet()
+ title_style=ParagraphStyle("TitleCenter",parent=styles["Title"],alignment=TA_CENTER,fontSize=16,leading=20,spaceAfter=6)
+ notice_style=ParagraphStyle("Notice",parent=styles["Normal"],alignment=TA_CENTER,fontSize=9,leading=12,textColor=colors.HexColor("#A14E00"),spaceAfter=10)
+ meta_style=ParagraphStyle("Meta",parent=styles["Normal"],fontSize=9,leading=12,spaceAfter=10)
+ f=summary.get("filters") or {}
+ county=friendly(f.get("county")) or "National"
+ constituency=friendly(f.get("constituency")) or "All Constituencies"
+ ward=friendly(f.get("ward")) or "All Wards"
+ totals=summary.get("totals") or {}
+ reporting=summary.get("reporting") or {}
+ story=[
+  Paragraph("2027 Presidential Simulation Results",title_style),
+  Paragraph("<b>TRAINING / SIMULATION ONLY — NON-BINDING</b>",notice_style),
+  Paragraph(f"<b>County:</b> {escape(county)}<br/><b>Constituency:</b> {escape(constituency)}<br/><b>Ward:</b> {escape(ward)}",meta_style),
+  Paragraph(
+   f"<b>Deliberate Votes Cast:</b> {to_int(totals.get('candidate_selections')):,} &nbsp;&nbsp; "
+   f"<b>Deliberate Votes Skipped:</b> {to_int(totals.get('skipped')):,} &nbsp;&nbsp; "
+   f"<b>Participants:</b> {to_int(totals.get('participants')):,}<br/>"
+   f"<b>Registered Voters:</b> {to_int(totals.get('registered_voters')):,} &nbsp;&nbsp; "
+   f"<b>Turnout:</b> {totals.get('turnout_percent',0)}% &nbsp;&nbsp; "
+   f"<b>Streams Closed:</b> {to_int(reporting.get('closed_streams')):,} / {to_int(reporting.get('expected_streams')):,}",meta_style),
+ ]
+ data=[["Rank","Candidate","Votes","Share"]]
+ candidates=summary.get("candidates") or []
+ if candidates:
+  for i,row in enumerate(candidates,1):
+   data.append([str(i),Paragraph(escape(str(row.get("candidate") or "")),styles["Normal"]),f"{to_int(row.get('votes')):,}",f"{row.get('share',0)}%"])
+ else:
+  data.append(["","No presidential candidate selections yet.","0","0%"])
+ table=Table(data,colWidths=[18*mm,100*mm,28*mm,25*mm],repeatRows=1)
+ table.setStyle(results_table_style())
+ table.setStyle(TableStyle([("ALIGN",(0,0),(0,-1),"CENTER"),("ALIGN",(2,1),(-1,-1),"RIGHT")]))
+ story.extend([table,Spacer(1,7*mm)])
+
+ county25=summary.get("candidate_counties_25_plus") or []
+ if county25:
+  story.append(Paragraph("Counties With 25% or More of Votes Cast",styles["Heading2"]))
+  stats=[["Candidate","Counties ≥25%"]]+[[Paragraph(escape(str(x.get("candidate") or "")),styles["Normal"]),str(to_int(x.get("counties_25_plus")))] for x in county25]
+  stats_table=Table(stats,colWidths=[125*mm,45*mm],repeatRows=1)
+  stats_table.setStyle(results_table_style())
+  story.extend([stats_table,Spacer(1,7*mm)])
+ story.append(Paragraph("This report is generated from a training/simulation dashboard and does not constitute an official election result.",styles["Italic"]))
+ doc.build(story)
+ return buf.getvalue()
+
+def send_results_email(recipient,pdf_bytes,summary):
+ if not SMTP_HOST or not SMTP_FROM_EMAIL:
+  raise RuntimeError("Email service is not configured on this dashboard.")
+ f=summary.get("filters") or {}
+ county=friendly(f.get("county")) or "National"
+ constituency=friendly(f.get("constituency")) or "All Constituencies"
+ ward=friendly(f.get("ward")) or "All Wards"
+ candidate_lines=[f"{i}. {row.get('candidate') or ''}: {to_int(row.get('votes')):,} votes ({row.get('share',0)}%)" for i,row in enumerate(summary.get("candidates") or [],1)]
+ candidate_results="\n".join(candidate_lines) or "No presidential candidate selections yet."
+ county25_lines=[f"{row.get('candidate') or ''}: {to_int(row.get('counties_25_plus'))} counties" for row in summary.get("candidate_counties_25_plus") or []]
+ county25_results="\n".join(county25_lines) or "No county vote data yet."
+ msg=EmailMessage()
+ msg["Subject"]=f"Presidential Simulation Candidate Results — {county}"
+ msg["From"]=f"{SMTP_FROM_NAME} <{SMTP_FROM_EMAIL}>" if SMTP_FROM_NAME else SMTP_FROM_EMAIL
+ msg["To"]=recipient
+ msg.set_content(
+  "Attached are the current 2027 Presidential Simulation Candidate Results.\n\n"
+  "TRAINING / SIMULATION ONLY — NON-BINDING\n"
+  f"County: {county}\nConstituency: {constituency}\nWard: {ward}\n\n"
+  f"Candidate Results:\n{candidate_results}\n\n"
+  f"Counties With 25% or More:\n{county25_results}\n\n"
+  "This dashboard is for training and simulation only and does not constitute an official election result."
+ )
+ safe_scope=re.sub(r"[^A-Za-z0-9_-]+","_",county).strip("_") or "National"
+ msg.add_attachment(pdf_bytes,maintype="application",subtype="pdf",filename=f"Presidential_Simulation_Results_{safe_scope}.pdf")
+ if SMTP_USE_SSL:
+  with smtplib.SMTP_SSL(SMTP_HOST,SMTP_PORT,timeout=30,context=ssl.create_default_context()) as server:
+   if SMTP_USERNAME:server.login(SMTP_USERNAME,SMTP_PASSWORD)
+   server.send_message(msg)
+ else:
+  with smtplib.SMTP(SMTP_HOST,SMTP_PORT,timeout=30) as server:
+   server.ehlo()
+   if SMTP_USE_TLS:
+    server.starttls(context=ssl.create_default_context());server.ehlo()
+   if SMTP_USERNAME:server.login(SMTP_USERNAME,SMTP_PASSWORD)
+   server.send_message(msg)
+
+@app.post("/api/email-results")
+@login_required
+def api_email_results():
+ try:
+  payload=request.get_json(silent=True) or {}
+  recipient=str(payload.get("recipient") or "").strip()
+  if not valid_email(recipient):return jsonify({"error":"Enter a valid recipient email address."}),400
+  summary=summary_payload(payload.get("county",""),payload.get("constituency",""),payload.get("ward",""))
+  send_results_email(recipient,build_results_pdf(summary),summary)
+  return jsonify({"ok":True,"message":f"Results PDF emailed to {recipient}."})
+ except Exception as exc:
+  app.logger.exception("Email results failed")
   return jsonify({"error":str(exc)}),500
 
 @app.get("/api/counties")

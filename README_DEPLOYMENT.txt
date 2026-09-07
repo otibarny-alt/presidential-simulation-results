@@ -64,3 +64,11 @@ No National ID, phone number, or membership number is sent to this dashboard.
 The dashboard refreshes headline totals/candidate tallies every 5 seconds; Refresh Now forces an immediate source refresh.
 Set CACHE_SECONDS=3 (recommended) on the dashboard service.
 Deploy the voting simulation update first, then this dashboard update.
+
+V5 EMAIL RESULTS
+----------------
+- Adds Email Results to Presidential Candidate Tallies.
+- Generates and attaches a filtered Presidential Simulation Results PDF.
+- Includes candidate totals, vote shares, turnout/reporting metadata and the
+  existing Counties With 25% or More statistics.
+- Configure the SMTP variables shown in .env.example on the dashboard service.
