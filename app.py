@@ -216,6 +216,10 @@ def summary_payload(county="",constituency="",ward=""):
  closed=sum(1 for k in expected_keys if stream_by_key.get(k,{}).get("status")=="CLOSED")
  active=sum(1 for k in expected_keys if to_int(stream_by_key.get(k,{}).get("participants"))>0)
  registered=registered_for_expected(expected)
+ if not county and not constituency and not ward:
+  upstream_registered=to_int((snap.get("totals") or {}).get("registered_voters"))
+  if upstream_registered:
+   registered=upstream_registered
  no_participation=max(0,registered-participants)
  skip_pct=round(skipped/registered*100,2) if registered else 0
  turnout_pct=round(participants/registered*100,2) if registered else 0
