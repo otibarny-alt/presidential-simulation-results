@@ -6,6 +6,7 @@ from email.message import EmailMessage
 from functools import wraps
 
 import requests
+from requests.adapters import HTTPAdapter
 from flask import Flask, jsonify, render_template, request, redirect, url_for, session, flash
 from werkzeug.security import check_password_hash
 from dotenv import load_dotenv
@@ -40,6 +41,9 @@ SMTP_USE_TLS=os.getenv("SMTP_USE_TLS","true").strip().lower() in {"1","true","ye
 SMTP_USE_SSL=os.getenv("SMTP_USE_SSL","false").strip().lower() in {"1","true","yes","on"}
 
 _cache={"snapshot_at":0.0,"snapshot":None,"hierarchy":None,"registered":None}
+http=requests.Session()
+http.mount("http://",HTTPAdapter(pool_connections=4,pool_maxsize=8,max_retries=1))
+http.mount("https://",HTTPAdapter(pool_connections=4,pool_maxsize=8,max_retries=1))
 
 def login_required(fn):
  @wraps(fn)
@@ -71,6 +75,9 @@ def logout():
 
 def norm(v):
  return re.sub(r"[-_\s]+"," ",str(v or "").strip().lower()).strip()
+
+def geo_key(value):
+ return tuple(norm(value.get(k,"")) for k in ("county","constituency","ward","poll_station","stream"))
 
 def friendly(v):
  text=str(v or "").strip()
@@ -148,14 +155,23 @@ def fetch_snapshot(force=False):
   return _cache["snapshot"]
  if not SIMULATION_BASE_URL or not SIMULATION_DASHBOARD_API_KEY:
   raise RuntimeError("Simulation dashboard connection is not configured.")
- r=requests.get(
-  f"{SIMULATION_BASE_URL}/api/dashboard/president",
-  headers={"X-Dashboard-Key":SIMULATION_DASHBOARD_API_KEY},
-  timeout=45
- )
- if not r.ok:
-  raise RuntimeError(f"Simulation API HTTP {r.status_code}: {r.text[:300]}")
- data=r.json()
+ try:
+  r=http.get(
+   f"{SIMULATION_BASE_URL}/api/dashboard/president",
+   headers={"X-Dashboard-Key":SIMULATION_DASHBOARD_API_KEY,"Accept":"application/json"},
+   timeout=(5,20)
+  )
+  if not r.ok:
+   raise RuntimeError(f"Simulation API HTTP {r.status_code}: {r.text[:300]}")
+  data=r.json()
+  if not isinstance(data,dict) or "streams" not in data:
+   raise RuntimeError("Simulation API returned an invalid presidential snapshot.")
+ except Exception:
+  # A brief Render/database interruption must not replace previously displayed
+  # election data with a fabricated all-zero dashboard.
+  if _cache["snapshot"] is not None:
+   return _cache["snapshot"]
+  raise
  _cache["snapshot_at"]=now
  _cache["snapshot"]=data
  return data
@@ -172,8 +188,8 @@ def filtered_expected(county="",constituency="",ward=""):
 
 def filtered_snapshot_streams(snapshot,county="",constituency="",ward=""):
  expected=filtered_expected(county,constituency,ward)
- allowed={norm(x["stream"]) for x in expected}
- return [x for x in snapshot.get("streams",[]) if norm(x.get("stream","")) in allowed]
+ allowed={geo_key(x) for x in expected}
+ return [x for x in snapshot.get("streams",[]) if geo_key(x) in allowed]
 
 def registered_for_expected(expected):
  idx=load_registered()
@@ -183,8 +199,8 @@ def summary_payload(county="",constituency="",ward=""):
  snap=fetch_snapshot()
  expected=filtered_expected(county,constituency,ward)
  streams=filtered_snapshot_streams(snap,county,constituency,ward)
- expected_keys={norm(x["stream"]) for x in expected}
- stream_by_key={norm(x.get("stream","")):x for x in streams}
+ expected_keys={geo_key(x) for x in expected}
+ stream_by_key={geo_key(x):x for x in streams}
 
  candidate_names={}
  candidate_votes={}
@@ -226,7 +242,8 @@ def summary_payload(county="",constituency="",ward=""):
 
  station_expected={}
  for g in expected:
-  station_expected.setdefault(norm(g["poll_station"]),set()).add(norm(g["stream"]))
+  station_key=tuple(norm(g.get(k,"")) for k in ("county","constituency","ward","poll_station"))
+  station_expected.setdefault(station_key,set()).add(geo_key(g))
  complete=partial=not_started=0
  for stream_ids in station_expected.values():
   statuses=[stream_by_key.get(k,{}).get("status","NOT STARTED") for k in stream_ids]
@@ -242,10 +259,10 @@ def summary_payload(county="",constituency="",ward=""):
  # Candidate performance by county. Percentages use deliberate candidate votes cast
  # in that county as the denominator; skipped presidential categories are excluded.
  hp=load_hierarchy()
- geo_by_stream={norm(x["stream"]):x for x in hp["expected"]}
+ geo_by_stream={geo_key(x):x for x in hp["expected"]}
  county_stats={}
  for row in streams:
-  geo=geo_by_stream.get(norm(row.get("stream","")),{})
+  geo=geo_by_stream.get(geo_key(row),{})
   ckey=geo.get("county","")
   if not ckey: continue
   c=county_stats.setdefault(ckey,{"county":geo.get("county_label") or friendly(ckey),"total_votes_cast":0,"candidate_votes":{}})
@@ -475,11 +492,11 @@ def api_stream_details():
 
  snap=fetch_snapshot()
  expected=filtered_expected(county,constituency,ward)
- live={norm(x.get("stream","")):x for x in filtered_snapshot_streams(snap,county,constituency,ward)}
+ live={geo_key(x):x for x in filtered_snapshot_streams(snap,county,constituency,ward)}
  reg=load_registered()
  rows=[]
  for g in expected:
-  x=live.get(norm(g["stream"]),{})
+  x=live.get(geo_key(g),{})
   status=x.get("status","NOT STARTED")
   if status_filter and status!=status_filter:continue
   if search:
