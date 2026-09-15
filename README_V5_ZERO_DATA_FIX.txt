@@ -3,6 +3,8 @@ PRESIDENTIAL DASHBOARD V5 — ZERO-DATA AND GEOGRAPHIC MATCHING FIX
 What was corrected
 ------------------
 - Uses a pooled HTTP session with short connection/read timeouts.
+- Coalesces simultaneous summary, chart and stream-detail requests into one
+  upstream refresh, removing duplicate waits during page loading.
 - Keeps the last valid snapshot during a temporary Render/database outage
   instead of replacing the dashboard with fabricated zero values.
 - Validates that the upstream response contains a real stream snapshot.
@@ -18,4 +20,3 @@ SIMULATION_DASHBOARD_API_KEY=<exactly the same value as DASHBOARD_API_KEY on the
 If either value is missing or the keys differ, /api/summary will return an
 explicit configuration/authorization error. Correct the environment variables
 and redeploy the presidential dashboard.
-

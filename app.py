@@ -1,5 +1,5 @@
 
-import os, csv, re, time, smtplib, ssl
+import os, csv, re, time, smtplib, ssl, threading
 from html import escape
 from io import BytesIO
 from email.message import EmailMessage
@@ -41,6 +41,7 @@ SMTP_USE_TLS=os.getenv("SMTP_USE_TLS","true").strip().lower() in {"1","true","ye
 SMTP_USE_SSL=os.getenv("SMTP_USE_SSL","false").strip().lower() in {"1","true","yes","on"}
 
 _cache={"snapshot_at":0.0,"snapshot":None,"hierarchy":None,"registered":None}
+_snapshot_lock=threading.Lock()
 http=requests.Session()
 http.mount("http://",HTTPAdapter(pool_connections=4,pool_maxsize=8,max_retries=1))
 http.mount("https://",HTTPAdapter(pool_connections=4,pool_maxsize=8,max_retries=1))
@@ -153,28 +154,32 @@ def fetch_snapshot(force=False):
  now=time.time()
  if not force and _cache["snapshot"] is not None and now-_cache["snapshot_at"]<CACHE_SECONDS:
   return _cache["snapshot"]
- if not SIMULATION_BASE_URL or not SIMULATION_DASHBOARD_API_KEY:
-  raise RuntimeError("Simulation dashboard connection is not configured.")
- try:
-  r=http.get(
-   f"{SIMULATION_BASE_URL}/api/dashboard/president",
-   headers={"X-Dashboard-Key":SIMULATION_DASHBOARD_API_KEY,"Accept":"application/json"},
-   timeout=(5,20)
-  )
-  if not r.ok:
-   raise RuntimeError(f"Simulation API HTTP {r.status_code}: {r.text[:300]}")
-  data=r.json()
-  if not isinstance(data,dict) or "streams" not in data:
-   raise RuntimeError("Simulation API returned an invalid presidential snapshot.")
- except Exception:
-  # A brief Render/database interruption must not replace previously displayed
-  # election data with a fabricated all-zero dashboard.
-  if _cache["snapshot"] is not None:
+ with _snapshot_lock:
+  # Summary, chart and stream-detail requests arrive together. Recheck the
+  # cache after taking the lock so only one of them contacts the voting app.
+  now=time.time()
+  if not force and _cache["snapshot"] is not None and now-_cache["snapshot_at"]<CACHE_SECONDS:
    return _cache["snapshot"]
-  raise
- _cache["snapshot_at"]=now
- _cache["snapshot"]=data
- return data
+  if not SIMULATION_BASE_URL or not SIMULATION_DASHBOARD_API_KEY:
+   raise RuntimeError("Simulation dashboard connection is not configured.")
+  try:
+   r=http.get(
+    f"{SIMULATION_BASE_URL}/api/dashboard/president",
+    headers={"X-Dashboard-Key":SIMULATION_DASHBOARD_API_KEY,"Accept":"application/json"},
+    timeout=(4,12)
+   )
+   if not r.ok:
+    raise RuntimeError(f"Simulation API HTTP {r.status_code}: {r.text[:300]}")
+   data=r.json()
+   if not isinstance(data,dict) or "streams" not in data:
+    raise RuntimeError("Simulation API returned an invalid presidential snapshot.")
+  except Exception:
+   if _cache["snapshot"] is not None:
+    return _cache["snapshot"]
+   raise
+  _cache["snapshot_at"]=now
+  _cache["snapshot"]=data
+  return data
 
 def filtered_expected(county="",constituency="",ward=""):
  county_n,con_n,ward_n=norm(county),norm(constituency),norm(ward)
