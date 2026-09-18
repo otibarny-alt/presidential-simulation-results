@@ -217,6 +217,9 @@ def summary_payload(county="",constituency="",ward=""):
  expected=filtered_expected(county,constituency,ward)
  streams=filtered_snapshot_streams(snap,county,constituency,ward)
  expected_keys={geo_key(x) for x in expected}
+ expected_count=len(expected_keys)
+ if not county and not constituency and not ward:
+  expected_count=to_int(snap.get("expected_streams_total")) or expected_count
  stream_by_key={geo_key(x):x for x in streams}
 
  candidate_names={}
@@ -316,12 +319,12 @@ def summary_payload(county="",constituency="",ward=""):
    "skip_percent_registered":skip_pct
   },
   "reporting":{
-   "expected_streams":len(expected_keys),
+   "expected_streams":expected_count,
    "opened_streams":opened,
    "closed_streams":closed,
    "active_streams":active,
-   "not_started_streams":max(0,len(expected_keys)-opened),
-   "opening_percent":round(opened/len(expected_keys)*100,2) if expected_keys else 0,
+   "not_started_streams":max(0,expected_count-opened),
+   "opening_percent":round(opened/expected_count*100,2) if expected_count else 0,
    "polling_centres_complete":complete,
    "polling_centres_partial":partial,
    "polling_centres_not_started":not_started
