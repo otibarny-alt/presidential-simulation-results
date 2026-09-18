@@ -373,8 +373,8 @@ def build_results_pdf(summary):
   Paragraph("<b>TRAINING / SIMULATION ONLY — NON-BINDING</b>",notice_style),
   Paragraph(f"<b>County:</b> {escape(county)}<br/><b>Constituency:</b> {escape(constituency)}<br/><b>Ward:</b> {escape(ward)}",meta_style),
   Paragraph(
-   f"<b>Deliberate Votes Cast:</b> {to_int(totals.get('candidate_selections')):,} &nbsp;&nbsp; "
-   f"<b>Deliberate Votes Skipped:</b> {to_int(totals.get('skipped')):,} &nbsp;&nbsp; "
+   f"<b>Total Votes Cast:</b> {to_int(totals.get('candidate_selections')):,} &nbsp;&nbsp; "
+   f"<b>Total Votes Skipped:</b> {to_int(totals.get('skipped')):,} &nbsp;&nbsp; "
    f"<b>Participants:</b> {to_int(totals.get('participants')):,}<br/>"
    f"<b>Registered Voters:</b> {to_int(totals.get('registered_voters')):,} &nbsp;&nbsp; "
    f"<b>Turnout:</b> {totals.get('turnout_percent',0)}% &nbsp;&nbsp; "
