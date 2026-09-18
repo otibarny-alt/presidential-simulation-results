@@ -169,7 +169,7 @@ def fetch_snapshot(force=False):
     timeout=(4,12)
    )
    if not r.ok:
-    raise RuntimeError(f"Simulation API HTTP {r.status_code}: {r.text[:300]}")
+    raise RuntimeError(f"Voting system API temporarily unavailable (HTTP {r.status_code}). Please retry shortly.")
    data=r.json()
    if not isinstance(data,dict) or "streams" not in data:
     raise RuntimeError("Simulation API returned an invalid presidential snapshot.")
