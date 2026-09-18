@@ -28,6 +28,7 @@ SIMULATION_DASHBOARD_API_KEY=os.getenv("SIMULATION_DASHBOARD_API_KEY","").strip(
 COUNTY_MAIN_FILENAME=os.getenv("COUNTY_MAIN_FILENAME","county_main.csv").strip()
 AGENTS_LOGIN_FILENAME=os.getenv("AGENTS_LOGIN_FILENAME","agents_login.csv").strip()
 CACHE_SECONDS=int(os.getenv("CACHE_SECONDS","3"))
+SIMULATION_API_READ_TIMEOUT_SECONDS=max(30,int(os.getenv("SIMULATION_API_READ_TIMEOUT_SECONDS","100") or 100))
 
 AUTH_USERNAME=os.getenv("AUTH_USERNAME","").strip()
 AUTH_PASSWORD_HASH=os.getenv("AUTH_PASSWORD_HASH","").strip()
@@ -166,13 +167,20 @@ def fetch_snapshot(force=False):
    r=http.get(
     f"{SIMULATION_BASE_URL}/api/dashboard/president",
     headers={"X-Dashboard-Key":SIMULATION_DASHBOARD_API_KEY,"Accept":"application/json"},
-    timeout=(4,12)
+    timeout=(6,SIMULATION_API_READ_TIMEOUT_SECONDS)
    )
    if not r.ok:
     raise RuntimeError(f"Voting system API temporarily unavailable (HTTP {r.status_code}). Please retry shortly.")
    data=r.json()
    if not isinstance(data,dict) or "streams" not in data:
     raise RuntimeError("Simulation API returned an invalid presidential snapshot.")
+  except requests.Timeout:
+   if _cache["snapshot"] is not None:
+    return _cache["snapshot"]
+   raise RuntimeError(
+    "The voting system is still synchronizing the Kobo membership register. "
+    "Please wait about one minute and select Refresh Now."
+   )
   except Exception:
    if _cache["snapshot"] is not None:
     return _cache["snapshot"]

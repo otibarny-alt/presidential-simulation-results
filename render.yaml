@@ -3,4 +3,4 @@ services:
     name: presidential-simulation-results-dashboard
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: gunicorn app:app --workers 1 --threads 4 --timeout 120 --keep-alive 5
