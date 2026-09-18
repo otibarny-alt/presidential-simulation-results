@@ -196,9 +196,13 @@ def filtered_snapshot_streams(snapshot,county="",constituency="",ward=""):
  allowed={geo_key(x) for x in expected}
  return [x for x in snapshot.get("streams",[]) if geo_key(x) in allowed]
 
-def registered_for_expected(expected):
- idx=load_registered()
- return sum(idx.get(norm(x["stream"]),0) for x in expected)
+def membership_registered(snapshot,county="",constituency="",ward="",poll_station=""):
+ rows=snapshot.get("registered_voter_breakdown")
+ if not isinstance(rows,list):
+  raise RuntimeError("Voting API has not supplied the Kobo membership-register breakdown.")
+ filters={"county":county,"constituency":constituency,"ward":ward,"poll_station":poll_station}
+ return sum(to_int(row.get("registered_voters")) for row in rows
+            if all(not value or norm(row.get(field))==norm(value) for field,value in filters.items()))
 
 def summary_payload(county="",constituency="",ward=""):
  snap=fetch_snapshot()
@@ -236,7 +240,7 @@ def summary_payload(county="",constituency="",ward=""):
  opened=sum(1 for k in expected_keys if stream_by_key.get(k,{}).get("status") in {"OPEN","CLOSED"})
  closed=sum(1 for k in expected_keys if stream_by_key.get(k,{}).get("status")=="CLOSED")
  active=sum(1 for k in expected_keys if to_int(stream_by_key.get(k,{}).get("participants"))>0)
- registered=registered_for_expected(expected)
+ registered=membership_registered(snap,county,constituency,ward)
  if not county and not constituency and not ward:
   upstream_registered=to_int((snap.get("totals") or {}).get("registered_voters"))
   if upstream_registered:
