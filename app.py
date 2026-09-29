@@ -342,9 +342,12 @@ def index():
 @app.get("/api/summary")
 @login_required
 def api_summary():
+ county=request.args.get("county","").strip()
+ if not county:
+  return jsonify({"error":"Select a county before loading results. National presentation is disabled for performance."}),400
  try:
   return jsonify(summary_payload(
-   request.args.get("county",""),
+   county,
    request.args.get("constituency",""),
    request.args.get("ward","")
   ))
@@ -456,6 +459,8 @@ def send_results_email(recipient,pdf_bytes,summary):
 def api_email_results():
  try:
   payload=request.get_json(silent=True) or {}
+  if not str(payload.get("county") or "").strip():
+   return jsonify({"error":"Select a county before emailing results."}),400
   recipient=str(payload.get("recipient") or "").strip()
   if not valid_email(recipient):return jsonify({"error":"Enter a valid recipient email address."}),400
   summary=summary_payload(payload.get("county",""),payload.get("constituency",""),payload.get("ward",""))
@@ -500,7 +505,9 @@ def api_wards():
 @app.get("/api/stream-details")
 @login_required
 def api_stream_details():
- county=request.args.get("county","")
+ county=request.args.get("county","").strip()
+ if not county:
+  return jsonify({"error":"Select a county before loading stream results."}),400
  constituency=request.args.get("constituency","")
  ward=request.args.get("ward","")
  status_filter=request.args.get("status","").strip().upper()
@@ -543,8 +550,10 @@ def api_stream_details():
 @app.get("/api/recent-streams")
 @login_required
 def api_recent_streams():
+ county=request.args.get("county","").strip()
+ if not county:
+  return jsonify({"error":"Select a county before loading recent streams."}),400
  snap=fetch_snapshot()
- county=request.args.get("county","")
  constituency=request.args.get("constituency","")
  ward=request.args.get("ward","")
  limit=min(max(to_int(request.args.get("limit",50)),1),100)

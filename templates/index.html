@@ -32,7 +32,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:9px;border-bottom:1px so
 
  <div class="controls">
   <strong>View:</strong>
-  <select id="county"><option value="">National</option></select>
+  <select id="county" required><option value="">Select County — Required</option></select>
   <select id="constituency" disabled><option value="">All Constituencies</option></select>
   <select id="ward" disabled><option value="">All Wards</option></select>
   <button class="primary" onclick="loadDashboard()">Apply</button>
@@ -114,7 +114,8 @@ let candidateChart,progressChart; const fmt=n=>Number(n||0).toLocaleString();
 async function init(){
  const counties=await fetch('/api/counties').then(r=>r.json());
  const c=document.getElementById('county'); counties.forEach(x=>c.add(new Option(x.label,x.value)));
- c.addEventListener('change',loadConstituencies); document.getElementById('constituency').addEventListener('change',loadWards); await loadDashboard();
+ c.addEventListener('change',loadConstituencies); document.getElementById('constituency').addEventListener('change',loadWards);
+ lastUpdated.textContent='Select a county, then choose Apply. National presentation is disabled for performance.';
 }
 async function loadConstituencies(){
  const county=document.getElementById('county').value,el=document.getElementById('constituency'),ward=document.getElementById('ward');
@@ -128,6 +129,7 @@ async function loadWards(){
 }
 function qs(){return '?county='+encodeURIComponent(county.value)+'&constituency='+encodeURIComponent(constituency.value)+'&ward='+encodeURIComponent(ward.value)}
 async function loadDashboard(refreshDetails=true){
+ if(!county.value){lastUpdated.textContent='Select a county, then choose Apply. National presentation is disabled for performance.';return}
  if(refreshDetails)streamPage=1; const d=await fetch('/api/summary'+qs(),{cache:'no-store'}).then(r=>r.json()); if(d.error){alert(d.error);return}
  candidateSelections.textContent=fmt(d.totals.candidate_selections); skipped.textContent=fmt(d.totals.skipped); participants.textContent=fmt(d.totals.participants); registered.textContent=fmt(d.totals.registered_voters);
  turnout.textContent=d.totals.turnout_percent+'%'; skipRate.textContent=d.totals.skip_percent_registered+'%'; openedStreams.textContent=fmt(d.reporting.opened_streams);closedStreams.textContent=fmt(d.reporting.closed_streams);votesNotCast.textContent=fmt(d.totals.total_votes_not_cast);
@@ -141,6 +143,7 @@ async function loadDashboard(refreshDetails=true){
 }
 let streamPage=1,streamTotalPages=1;
 async function loadStreams(){
+ if(!county.value){streamTable.innerHTML='<tr><td colspan="9">Select a county to load stream results.</td></tr>';return}
  const body=streamTable;body.innerHTML='<tr><td colspan="9">Loading stream details…</td></tr>';
  const url='/api/stream-details'+qs()+'&page='+streamPage+'&page_size='+encodeURIComponent(pageSize.value)+'&status='+encodeURIComponent(statusFilter.value)+'&search='+encodeURIComponent(streamSearch.value);
  try{
@@ -151,6 +154,7 @@ async function loadStreams(){
 }
 function changeStreamPage(d){const t=streamPage+d;if(t<1||t>streamTotalPages)return;streamPage=t;loadStreams()}
 async function loadRecent(){
+ if(!county.value){recentTable.innerHTML='<tr><td colspan="9">Select a county to load recent streams.</td></tr>';return}
  const rows=await fetch('/api/recent-streams'+qs()+'&limit=50',{cache:'no-store'}).then(r=>r.json());
  recentTable.innerHTML=rows.map(x=>`<tr><td>${x.county||'—'}</td><td>${x.constituency||'—'}</td><td>${x.ward||'—'}</td><td>${x.poll_station||'—'}</td><td>${x.stream||'—'}</td><td class="status-${x.status}">${x.status||'—'}</td><td>${x.opened_at||'—'}</td><td>${x.closed_at||'—'}</td><td>${fmt(x.participants)}</td></tr>`).join('');
 }
@@ -167,6 +171,6 @@ async function emailResults(){
 function showTab(w){streamsPanel.classList.toggle('hidden',w!=='streams');recentPanel.classList.toggle('hidden',w!=='recent');tabStreams.classList.toggle('active',w==='streams');tabRecent.classList.toggle('active',w==='recent')}
 init();
 // Keep presidential totals/candidate tallies close to live without reloading the large stream table every cycle.
-setInterval(()=>loadDashboard(false),5000);
+setInterval(()=>{if(county.value)loadDashboard(false)},5000);
 </script>
 </body></html>
