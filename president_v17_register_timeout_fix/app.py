@@ -22,8 +22,6 @@ load_dotenv(os.path.join(BASE_DIR,".env"))
 
 app=Flask(__name__)
 app.secret_key=os.getenv("FLASK_SECRET_KEY","CHANGE-ME")
-from party_branding_client import register_party_branding
-register_party_branding(app)
 
 SIMULATION_BASE_URL=os.getenv("SIMULATION_BASE_URL","").rstrip("/")
 SIMULATION_DASHBOARD_API_KEY=os.getenv("SIMULATION_DASHBOARD_API_KEY","").strip()

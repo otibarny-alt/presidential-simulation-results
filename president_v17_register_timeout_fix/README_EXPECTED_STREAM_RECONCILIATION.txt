@@ -1,0 +1,1 @@
+The national expected-stream total is now supplied by the voting-system API's active county_main.csv. Local hierarchy data remains available only for dashboard filter choices and stream-detail display.
