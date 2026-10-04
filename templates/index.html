@@ -51,6 +51,7 @@ table{width:100%;border-collapse:collapse}th,td{padding:9px;border-bottom:1px so
   <div class="card"><div class="big skip" id="skipRate">0%</div><div class="label">Skipped / Registered Voters</div></div>
   <div class="card"><div class="big" id="openedStreams">0</div><div class="label">Streams Opened</div></div>
   <div class="card"><div class="big" id="closedStreams">0</div><div class="label">Streams Closed</div></div>
+  <div class="card"><div class="big" id="expectedStreams">0</div><div class="label">Total Polling-Station Streams</div></div>
   <div class="card"><div class="big" id="votesNotCast">0</div><div class="label">Total Votes Not Cast</div></div>
  </div>
 
@@ -132,7 +133,7 @@ async function loadDashboard(refreshDetails=true){
  if(!county.value){lastUpdated.textContent='Select a county, then choose Apply. National presentation is disabled for performance.';return}
  if(refreshDetails)streamPage=1; const d=await fetch('/api/summary'+qs(),{cache:'no-store'}).then(r=>r.json()); if(d.error){alert(d.error);return}
  candidateSelections.textContent=fmt(d.totals.candidate_selections); skipped.textContent=fmt(d.totals.skipped); participants.textContent=fmt(d.totals.participants); registered.textContent=fmt(d.totals.registered_voters);
- turnout.textContent=d.totals.turnout_percent+'%'; skipRate.textContent=d.totals.skip_percent_registered+'%'; openedStreams.textContent=fmt(d.reporting.opened_streams);closedStreams.textContent=fmt(d.reporting.closed_streams);votesNotCast.textContent=fmt(d.totals.total_votes_not_cast);
+ turnout.textContent=d.totals.turnout_percent+'%'; skipRate.textContent=d.totals.skip_percent_registered+'%'; openedStreams.textContent=fmt(d.reporting.opened_streams);closedStreams.textContent=fmt(d.reporting.closed_streams);expectedStreams.textContent=fmt(d.reporting.expected_streams);votesNotCast.textContent=fmt(d.totals.total_votes_not_cast);
  lastUpdated.textContent=d.last_updated?'Latest stream activity: '+d.last_updated:'No stream activity yet';
  candidateTable.innerHTML=d.candidates.map((x,i)=>`<tr><td>${i+1}</td><td>${x.candidate}</td><td>${fmt(x.votes)}</td><td>${x.share}%</td></tr>`).join('');
  county25Table.innerHTML=(d.candidate_counties_25_plus||[]).map(x=>`<tr><td>${x.candidate}</td><td>${fmt(x.counties_25_plus)}</td></tr>`).join('')||'<tr><td colspan="2">No county vote data yet.</td></tr>';

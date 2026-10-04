@@ -22,8 +22,6 @@ load_dotenv(os.path.join(BASE_DIR,".env"))
 
 app=Flask(__name__)
 app.secret_key=os.getenv("FLASK_SECRET_KEY","CHANGE-ME")
-from party_branding_client import register_party_branding
-register_party_branding(app)
 
 SIMULATION_BASE_URL=os.getenv("SIMULATION_BASE_URL","").rstrip("/")
 SIMULATION_DASHBOARD_API_KEY=os.getenv("SIMULATION_DASHBOARD_API_KEY","").strip()
@@ -209,7 +207,7 @@ def filtered_snapshot_streams(snapshot,county="",constituency="",ward=""):
 def membership_registered(snapshot,county="",constituency="",ward="",poll_station=""):
  rows=snapshot.get("registered_voter_breakdown")
  if not isinstance(rows,list):
-  raise RuntimeError("Voting API has not supplied the Kobo membership-register breakdown.")
+  raise RuntimeError("Voting API has not supplied the combined voters-register breakdown.")
  filters={"county":county,"constituency":constituency,"ward":ward,"poll_station":poll_station}
  aliases={}
  geography=load_hierarchy().get("expected",[])
@@ -230,8 +228,6 @@ def summary_payload(county="",constituency="",ward=""):
  streams=filtered_snapshot_streams(snap,county,constituency,ward)
  expected_keys={geo_key(x) for x in expected}
  expected_count=len(expected_keys)
- if not county and not constituency and not ward:
-  expected_count=to_int(snap.get("expected_streams_total")) or expected_count
  stream_by_key={geo_key(x):x for x in streams}
 
  candidate_names={}
@@ -264,10 +260,6 @@ def summary_payload(county="",constituency="",ward=""):
  closed=sum(1 for k in expected_keys if stream_by_key.get(k,{}).get("status")=="CLOSED")
  active=sum(1 for k in expected_keys if to_int(stream_by_key.get(k,{}).get("participants"))>0)
  registered=membership_registered(snap,county,constituency,ward)
- if not county and not constituency and not ward:
-  upstream_registered=to_int((snap.get("totals") or {}).get("registered_voters"))
-  if upstream_registered:
-   registered=upstream_registered
  no_participation=max(0,registered-participants)
  skip_pct=round(skipped/registered*100,2) if registered else 0
  turnout_pct=round(participants/registered*100,2) if registered else 0
