@@ -1,9 +1,9 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Gubernatorial Results Dashboard Login</title>
+<title>Presidential Results Dashboard Login</title>
 <style>body{font-family:Arial;background:#f4f6f8;padding:30px}.card{max-width:520px;margin:36px auto;background:#fff;padding:26px;border-radius:14px;box-shadow:0 4px 20px #0002}.odm-results-banner{display:block;width:100%;max-height:112px;object-fit:contain;margin:0 auto 22px}.subtitle{color:#555;margin-top:-8px;margin-bottom:18px}input{box-sizing:border-box;width:100%;padding:12px;margin:8px 0;border:1px solid #bbb;border-radius:8px}button{width:100%;padding:12px;background:#222;color:#fff;border:3px solid #ef7d00;border-radius:8px;font-weight:800}.msg{background:#fdecec;padding:10px;border-radius:7px}@media(max-width:600px){body{padding:12px}.card{margin:14px auto;padding:18px}.odm-results-banner{max-height:86px;margin-bottom:16px}}</style></head>
-<body><div class="card"><img class="odm-results-banner" src="{{ url_for('static',filename='odm_orange_voting_banner.png') }}" alt="ODM 2027 Party Primaries Voting System"><h2>Gubernatorial Results Dashboard</h2>
-<p class="subtitle">Authorized access to county gubernatorial simulation results.</p>
+<body><div class="card"><img class="odm-results-banner" src="{{ url_for('static',filename='odm_orange_voting_banner.png') }}" alt="ODM 2027 Party Primaries Voting System"><h2>Presidential Results Dashboard</h2>
+<p class="subtitle">Authorized access to national presidential simulation results.</p>
 {% with messages=get_flashed_messages(with_categories=true) %}{% for c,m in messages %}<div class="msg">{{m}}</div>{% endfor %}{% endwith %}
 <form method="post"><input name="username" placeholder="Username" required><input name="password" type="password" placeholder="Password" required><button>Sign In</button></form>
 </div></body></html>
