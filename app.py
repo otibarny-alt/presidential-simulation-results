@@ -43,6 +43,9 @@ SMTP_USE_SSL=os.getenv("SMTP_USE_SSL","false").strip().lower() in {"1","true","y
 
 _cache={"snapshot_at":0.0,"snapshot":None,"hierarchy":None,"registered":None}
 _snapshot_lock=threading.Lock()
+_voter_count_cache={}
+_voter_count_cache_lock=threading.Lock()
+VOTER_COUNT_CACHE_SECONDS=max(60,int(os.getenv("VOTER_COUNT_CACHE_SECONDS","600") or 600))
 http=requests.Session()
 http.mount("http://",HTTPAdapter(pool_connections=4,pool_maxsize=8,max_retries=1))
 http.mount("https://",HTTPAdapter(pool_connections=4,pool_maxsize=8,max_retries=1))
@@ -80,6 +83,19 @@ def norm(v):
 
 def geo_key(value):
  return tuple(norm(value.get(k,"")) for k in ("county","constituency","ward","poll_station","stream"))
+
+def stream_slot(stream):
+ value=norm(stream)
+ match=re.search(r"(?:^|\s)stream\s*0*(\d+)\s*$",value)
+ if not match:match=re.search(r"(?:^|\s)0*(\d+)\s*$",value)
+ return str(int(match.group(1))) if match else value
+
+def stream_status_key(value):
+ return (
+  norm(value.get("county","")),norm(value.get("constituency","")),
+  norm(value.get("ward","")),norm(value.get("poll_station","")),
+  stream_slot(value.get("stream",""))
+ )
 
 def friendly(v):
  text=str(v or "").strip()
@@ -201,45 +217,65 @@ def filtered_expected(county="",constituency="",ward=""):
 
 def filtered_snapshot_streams(snapshot,county="",constituency="",ward=""):
  expected=filtered_expected(county,constituency,ward)
- allowed={geo_key(x) for x in expected}
- return [x for x in snapshot.get("streams",[]) if geo_key(x) in allowed]
+ allowed={stream_status_key(x) for x in expected}
+ return [x for x in snapshot.get("streams",[]) if stream_status_key(x) in allowed]
 
 def membership_registered(snapshot,county="",constituency="",ward="",poll_station=""):
- response=requests.get(
-  SIMULATION_BASE_URL.rstrip("/")+"/api/voters-register/count",
-  params={"county":county,"constituency":constituency,"ward":ward,"polling_station":poll_station},
-  headers={"X-Dashboard-Key":SIMULATION_DASHBOARD_API_KEY,"Accept":"application/json"},
-  timeout=(5,120))
- if response.status_code!=200:
-  raise RuntimeError("Authoritative voters-register count is unavailable; no voter total will be displayed.")
- payload=response.json()
- if not payload.get("ok"):
-  raise RuntimeError(payload.get("error") or "Authoritative voters-register count failed.")
- return to_int(payload.get("registered_voters"))
- rows=snapshot.get("registered_voter_breakdown")
- if not isinstance(rows,list):
-  raise RuntimeError("Voting API has not supplied the combined voters-register breakdown.")
- filters={"county":county,"constituency":constituency,"ward":ward,"poll_station":poll_station}
- aliases={}
- geography=load_hierarchy().get("expected",[])
- for field,value in filters.items():
-  if not value:
-   aliases[field]=set();continue
-  accepted={norm(value),norm(friendly(value))}
-  for geo in geography:
-   pair={norm(geo.get(field)),norm(geo.get(field+"_label"))}
-   if accepted & pair:accepted.update(pair)
-  accepted.discard("");aliases[field]=accepted
- return sum(to_int(row.get("registered_voters")) for row in rows
-            if all(not value or norm(row.get(field)) in aliases[field] for field,value in filters.items()))
+ def authoritative_count(selected_constituency="",selected_ward="",selected_station=""):
+  params={
+   "county":friendly(county),
+   "constituency":friendly(selected_constituency),
+   "ward":friendly(selected_ward),
+   "polling_station":friendly(selected_station)
+  }
+  cache_key=tuple(norm(params[k]) for k in ("county","constituency","ward","polling_station"))
+  now=time.time()
+  with _voter_count_cache_lock:
+   cached=_voter_count_cache.get(cache_key)
+  if cached and now-cached["at"]<=VOTER_COUNT_CACHE_SECONDS:
+   return cached["count"]
+  last_error=None
+  for attempt in range(3):
+   try:
+    response=http.get(
+     SIMULATION_BASE_URL.rstrip("/")+"/api/voters-register/count",
+     params=params,
+     headers={"X-Dashboard-Key":SIMULATION_DASHBOARD_API_KEY,"Accept":"application/json"},
+     timeout=(5,120))
+    if response.status_code==200:
+     payload=response.json()
+     if not payload.get("ok"):
+      raise RuntimeError(payload.get("error") or "Voters Register count failed.")
+     count=to_int(payload.get("registered_voters"))
+     with _voter_count_cache_lock:
+      _voter_count_cache[cache_key]={"count":count,"at":time.time()}
+     return count
+    last_error=RuntimeError("Voters Register count service returned HTTP "+str(response.status_code)+".")
+    if response.status_code not in (502,503,504):break
+   except Exception as exc:
+    last_error=exc
+   if attempt<2:time.sleep(1.5*(attempt+1))
+  if cached:return cached["count"]
+  raise last_error or RuntimeError("Voters Register count service did not respond.")
+
+ if constituency or ward or poll_station:
+  return authoritative_count(constituency,ward,poll_station)
+ constituencies=sorted({
+  str(g.get("constituency") or "") for g in filtered_expected(county)
+  if str(g.get("constituency") or "").strip()
+ },key=norm)
+ if constituencies:
+  return sum(authoritative_count(value) for value in constituencies)
+ return authoritative_count()
 
 def summary_payload(county="",constituency="",ward=""):
  snap=fetch_snapshot()
  expected=filtered_expected(county,constituency,ward)
  streams=filtered_snapshot_streams(snap,county,constituency,ward)
- expected_keys={geo_key(x) for x in expected}
+ expected_keys={stream_status_key(x) for x in expected}
  expected_count=len(expected_keys)
- stream_by_key={geo_key(x):x for x in streams}
+ stream_by_key={stream_status_key(x):x for x in streams}
+ closed_streams=[x for x in streams if str(x.get("status") or "").upper()=="CLOSED"]
 
  candidate_names={}
  candidate_votes={}
@@ -250,7 +286,7 @@ def summary_payload(county="",constituency="",ward=""):
    candidate_votes[cid]=0
 
  candidate_selections=skipped=participants=0
- for row in streams:
+ for row in closed_streams:
   candidate_selections+=to_int(row.get("candidate_selections"))
   skipped+=to_int(row.get("skipped"))
   participants+=to_int(row.get("participants"))
@@ -267,8 +303,8 @@ def summary_payload(county="",constituency="",ward=""):
  for x in ranked:
   x["share"]=round(x["votes"]/candidate_selections*100,2) if candidate_selections else 0
 
- opened=sum(1 for k in expected_keys if stream_by_key.get(k,{}).get("status") in {"OPEN","CLOSED"})
- closed=sum(1 for k in expected_keys if stream_by_key.get(k,{}).get("status")=="CLOSED")
+ opened=sum(1 for k in expected_keys if str(stream_by_key.get(k,{}).get("status") or "").upper() in {"OPEN","CLOSED"})
+ closed=sum(1 for k in expected_keys if str(stream_by_key.get(k,{}).get("status") or "").upper()=="CLOSED")
  active=sum(1 for k in expected_keys if to_int(stream_by_key.get(k,{}).get("participants"))>0)
  registered=membership_registered(snap,county,constituency,ward)
  no_participation=max(0,registered-participants)
@@ -278,26 +314,26 @@ def summary_payload(county="",constituency="",ward=""):
  station_expected={}
  for g in expected:
   station_key=tuple(norm(g.get(k,"")) for k in ("county","constituency","ward","poll_station"))
-  station_expected.setdefault(station_key,set()).add(geo_key(g))
+  station_expected.setdefault(station_key,set()).add(stream_status_key(g))
  complete=partial=not_started=0
  for stream_ids in station_expected.values():
-  statuses=[stream_by_key.get(k,{}).get("status","NOT STARTED") for k in stream_ids]
+  statuses=[str(stream_by_key.get(k,{}).get("status") or "NOT STARTED").upper() for k in stream_ids]
   if statuses and all(x=="CLOSED" for x in statuses):complete+=1
   elif any(x in {"OPEN","CLOSED"} for x in statuses):partial+=1
   else:not_started+=1
 
  last_updated=""
- for row in streams:
+ for row in closed_streams:
   t=row.get("closed_at") or row.get("opened_at") or ""
   if t>last_updated:last_updated=t
 
  # Candidate performance by county. Percentages use deliberate candidate votes cast
  # in that county as the denominator; skipped presidential categories are excluded.
  hp=load_hierarchy()
- geo_by_stream={geo_key(x):x for x in hp["expected"]}
+ geo_by_stream={stream_status_key(x):x for x in hp["expected"]}
  county_stats={}
- for row in streams:
-  geo=geo_by_stream.get(geo_key(row),{})
+ for row in closed_streams:
+  geo=geo_by_stream.get(stream_status_key(row),{})
   ckey=geo.get("county","")
   if not ckey: continue
   c=county_stats.setdefault(ckey,{"county":geo.get("county_label") or friendly(ckey),"total_votes_cast":0,"candidate_votes":{}})
@@ -534,11 +570,11 @@ def api_stream_details():
 
  snap=fetch_snapshot()
  expected=filtered_expected(county,constituency,ward)
- live={geo_key(x):x for x in filtered_snapshot_streams(snap,county,constituency,ward)}
+ live={stream_status_key(x):x for x in filtered_snapshot_streams(snap,county,constituency,ward)}
  reg=load_registered()
  rows=[]
  for g in expected:
-  x=live.get(geo_key(g),{})
+  x=live.get(stream_status_key(g),{})
   status=x.get("status","NOT STARTED")
   if status_filter and status!=status_filter:continue
   if search:
