@@ -37,7 +37,7 @@ SMTP_PORT=int(os.getenv("SMTP_PORT","587") or 587)
 SMTP_USERNAME=os.getenv("SMTP_USERNAME","").strip()
 SMTP_PASSWORD=os.getenv("SMTP_PASSWORD","")
 SMTP_FROM_EMAIL=os.getenv("SMTP_FROM_EMAIL",SMTP_USERNAME).strip()
-SMTP_FROM_NAME=os.getenv("SMTP_FROM_NAME","2027 Presidential Simulation Results").strip()
+SMTP_FROM_NAME=os.getenv("SMTP_FROM_NAME","2027 Presidential Nomination Results").strip()
 SMTP_USE_TLS=os.getenv("SMTP_USE_TLS","true").strip().lower() in {"1","true","yes","on"}
 SMTP_USE_SSL=os.getenv("SMTP_USE_SSL","false").strip().lower() in {"1","true","yes","on"}
 
@@ -434,7 +434,7 @@ def build_results_pdf(summary):
  totals=summary.get("totals") or {}
  reporting=summary.get("reporting") or {}
  story=[
-  Paragraph("2027 Presidential Simulation Results",title_style),
+  Paragraph("2027 Presidential Nomination Results",title_style),
   Paragraph("<b>TRAINING / SIMULATION ONLY — NON-BINDING</b>",notice_style),
   Paragraph(f"<b>County:</b> {escape(county)}<br/><b>Constituency:</b> {escape(constituency)}<br/><b>Ward:</b> {escape(ward)}",meta_style),
   Paragraph(
